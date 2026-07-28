@@ -149,10 +149,41 @@ jobs:
       # DEPLOY
       #######################################################
 
-      - name: Deploy to EKS
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ secrets.AWS_REGION }} \
+            --name ${{ secrets.EKS_CLUSTER }}
+
+      - name: Verify Cluster Connection
+        run: |
+          kubectl config current-context
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Create Namespace
+        run: |
+          kubectl create namespace fraud --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy ConfigMap
+        run: |
+          kubectl apply -f k8s/configmap.yml
+
+      - name: Deploy Secret
+        run: |
+          kubectl apply -f k8s/secret.yml
+
+      - name: Replace Image
         env:
           REGISTRY: ${{ steps.login.outputs.registry }}
         run: |
+          sed -i "s|IMAGE_PLACEHOLDER|$REGISTRY/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}|g" k8s/deployment.yml
+
+      - name: Deploy Application
+        run: |
           kubectl apply -f k8s/deployment.yml
           kubectl apply -f k8s/service.yml
-          kubectl rollout status deployment/fraud-api
+
+      - name: Wait for Rollout
+        run: |
+          kubectl rollout status deployment/fraud-api -n fraud

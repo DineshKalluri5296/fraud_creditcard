@@ -6,7 +6,6 @@ on:
       - main
 
 env:
-  MODEL_PATH: model/model.pkl
   ACCURACY_THRESHOLD: 0.95
 
 jobs:
@@ -15,48 +14,21 @@ jobs:
 
     steps:
 
-      - uses: actions/checkout@v5
+      - name: Checkout Code
+        uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v6
+      - name: Setup Python
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
-      - run: |
+      - name: Install Dependencies
+        run: |
           pip install -r requirements.txt
 
-      - name: Check Existing Model
-        id: model
-        run: |
-          if [ -f "$MODEL_PATH" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Train Model
-        if: steps.model.outputs.exists == 'false'
-        run: |
-          python model/train.py
-          
-      - name: Upload Model to S3
-        run: |
-         aws s3 cp model/model.pkl s3://${{ secrets.MODEL_BUCKET }}/model/model.pkl
-
-      - name: Verify Model Upload
-        run: |
-          aws s3 ls s3://${{ secrets.MODEL_BUCKET }}/model/
-
-      - name: Evaluate Existing Model
-        if: steps.model.outputs.exists == 'true'
-        id: evaluate
-        continue-on-error: true
-        run: |
-          python model/evaluate.py
-
-      - name: Retrain Because Accuracy Dropped
-        if: steps.evaluate.outcome == 'failure'
-        run: |
-          python model/train.py
+      #######################################################
+      # Configure AWS
+      #######################################################
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v5
@@ -65,9 +37,92 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      - name: Verify AWS Login
+        run: |
+          aws sts get-caller-identity
+
+      #######################################################
+      # MODEL REGISTRY (S3)
+      #######################################################
+
+      - name: Check Existing Model in S3
+        id: model
+        run: |
+          if aws s3 ls s3://${{ secrets.MODEL_BUCKET }}/model/model.pkl > /dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download Existing Model
+        if: steps.model.outputs.exists == 'true'
+        run: |
+          mkdir -p model
+          aws s3 cp \
+            s3://${{ secrets.MODEL_BUCKET }}/model/model.pkl \
+            model/model.pkl
+
+      #######################################################
+      # TRAIN
+      #######################################################
+
+      - name: Train Model
+        if: steps.model.outputs.exists == 'false'
+        run: |
+          python model/train.py
+
+      - name: Verify Model
+        run: |
+          ls -lah model
+          find . -name "model.pkl"
+
+      #######################################################
+      # EVALUATE
+      #######################################################
+
+      - name: Evaluate Existing Model
+        if: steps.model.outputs.exists == 'true'
+        id: evaluate
+        continue-on-error: true
+        run: |
+          python model/evaluate.py
+
+      #######################################################
+      # RETRAIN
+      #######################################################
+
+      - name: Retrain Model
+        if: steps.evaluate.outcome == 'failure'
+        run: |
+          python model/train.py
+
+      #######################################################
+      # UPLOAD MODEL
+      #######################################################
+
+      - name: Upload Model to S3
+        if: steps.model.outputs.exists == 'false' || steps.evaluate.outcome == 'failure'
+        run: |
+          aws s3 cp \
+            model/model.pkl \
+            s3://${{ secrets.MODEL_BUCKET }}/model/model.pkl
+
+      - name: Verify Model Upload
+        if: steps.model.outputs.exists == 'false' || steps.evaluate.outcome == 'failure'
+        run: |
+          aws s3 ls s3://${{ secrets.MODEL_BUCKET }}/model/
+
+      #######################################################
+      # LOGIN TO ECR
+      #######################################################
+
       - name: Login to Amazon ECR
         id: login
         uses: aws-actions/amazon-ecr-login@v2
+
+      #######################################################
+      # BUILD IMAGE
+      #######################################################
 
       - name: Build Docker Image
         env:
@@ -79,6 +134,10 @@ jobs:
             -t $REGISTRY/${{ secrets.ECR_REPOSITORY }}:latest \
             .
 
+      #######################################################
+      # PUSH IMAGE
+      #######################################################
+
       - name: Push Docker Image
         env:
           REGISTRY: ${{ steps.login.outputs.registry }}
@@ -86,13 +145,19 @@ jobs:
           docker push $REGISTRY/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
           docker push $REGISTRY/${{ secrets.ECR_REPOSITORY }}:latest
 
+      #######################################################
+      # DEPLOY
+      #######################################################
+
       - name: Configure kubectl
         run: |
           aws eks update-kubeconfig \
             --region ${{ secrets.AWS_REGION }} \
             --name ${{ secrets.EKS_CLUSTER }}
 
-      - name: Deploy
+      - name: Deploy to EKS
+        env:
+          REGISTRY: ${{ steps.login.outputs.registry }}
         run: |
           kubectl set image deployment/fraud-api \
             fraud-api=$REGISTRY/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}

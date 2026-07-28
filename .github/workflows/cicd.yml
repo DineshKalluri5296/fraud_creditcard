@@ -65,9 +65,11 @@ jobs:
         env:
           REGISTRY: ${{ steps.login.outputs.registry }}
         run: |
-          docker build -t $REGISTRY/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }} .
-          docker tag $REGISTRY/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }} \
-                     $REGISTRY/${{ secrets.ECR_REPOSITORY }}:latest
+          docker build \
+            -f docker/Dockerfile \
+            -t $REGISTRY/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }} \
+            -t $REGISTRY/${{ secrets.ECR_REPOSITORY }}:latest \
+            .
 
       - name: Push Docker Image
         env:

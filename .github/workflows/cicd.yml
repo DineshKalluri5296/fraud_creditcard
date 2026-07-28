@@ -149,17 +149,10 @@ jobs:
       # DEPLOY
       #######################################################
 
-      - name: Configure kubectl
-        run: |
-          aws eks update-kubeconfig \
-            --region ${{ secrets.AWS_REGION }} \
-            --name ${{ secrets.EKS_CLUSTER }}
-
       - name: Deploy to EKS
         env:
           REGISTRY: ${{ steps.login.outputs.registry }}
         run: |
-          kubectl set image deployment/fraud-api \
-            fraud-api=$REGISTRY/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
-
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
           kubectl rollout status deployment/fraud-api

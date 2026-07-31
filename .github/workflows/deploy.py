@@ -1,0 +1,126 @@
+name: Fraud Detection Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Docker Image Tag"
+        required: true
+        default: latest
+
+jobs:
+
+  deploy:
+
+    runs-on: ubuntu-latest
+
+    environment: production
+
+    permissions:
+      contents: read
+
+    steps:
+
+    ##########################################################
+    # Checkout
+    ##########################################################
+    - name: Checkout Repository
+      uses: actions/checkout@v5
+
+    ##########################################################
+    # Download Deployment Artifacts (Optional)
+    ##########################################################
+    - name: Download Deployment Files
+      uses: actions/download-artifact@v4
+      with:
+        name: deployment-files
+        path: k8s
+
+    ##########################################################
+    # Configure AWS
+    ##########################################################
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v5
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    ##########################################################
+    # Login Amazon ECR
+    ##########################################################
+    - name: Login to Amazon ECR
+      id: login
+      uses: aws-actions/amazon-ecr-login@v2
+
+    ##########################################################
+    # Configure kubectl
+    ##########################################################
+    - name: Configure kubectl
+      run: |
+        aws eks update-kubeconfig \
+        --region ${{ secrets.AWS_REGION }} \
+        --name ${{ secrets.EKS_CLUSTER }}
+
+    ##########################################################
+    # Verify Cluster
+    ##########################################################
+    - name: Verify Cluster
+      run: |
+        kubectl cluster-info
+        kubectl get nodes
+
+    ##########################################################
+    # Create Namespace
+    ##########################################################
+    - name: Create Namespace
+      run: |
+        kubectl create namespace fraud \
+        --dry-run=client -o yaml | kubectl apply -f -
+
+    ##########################################################
+    # Deploy ConfigMap
+    ##########################################################
+    - name: Deploy ConfigMap
+      run: kubectl apply -f k8s/configmap.yml
+
+    ##########################################################
+    # Deploy Secret
+    ##########################################################
+    - name: Deploy Secret
+      run: kubectl apply -f k8s/secrets.yml
+
+    ##########################################################
+    # Update Deployment Image
+    ##########################################################
+    - name: Replace Docker Image
+      env:
+        REGISTRY: ${{ steps.login.outputs.registry }}
+      run: |
+        sed -i "s|IMAGE_PLACEHOLDER|$REGISTRY/${{ secrets.ECR_REPOSITORY }}:${{ github.event.inputs.image_tag }}|g" \
+        k8s/deployment.yml
+
+    ##########################################################
+    # Deploy Application
+    ##########################################################
+    - name: Deploy to EKS
+      run: |
+        kubectl apply -f k8s/deployment.yml
+        kubectl apply -f k8s/service.yml
+
+    ##########################################################
+    # Wait for Rollout
+    ##########################################################
+    - name: Rollout Status
+      run: |
+        kubectl rollout status deployment/fraud-api \
+        -n fraud \
+        --timeout=300s
+
+    ##########################################################
+    # Verify Deployment
+    ##########################################################
+    - name: Verify Pods
+      run: |
+        kubectl get pods -n fraud
+        kubectl get svc -n fraud

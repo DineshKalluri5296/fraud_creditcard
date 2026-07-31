@@ -22,7 +22,7 @@ spec:
 
       - name: fraud-api
 
-        image: 690889479874.dkr.ecr.us-east-1.amazonaws.com/frauddetectioncc:latest
+        image: 821656895219.dkr.ecr.us-east-1.amazonaws.com/frauddetectioncc:latest
 
         imagePullPolicy: Always
 

@@ -1,0 +1,188 @@
+name: Fraud Detection CI
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+env:
+  ACCURACY_THRESHOLD: "0.95"
+
+jobs:
+  build-train:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+
+    ##########################################################
+    # Checkout
+    ##########################################################
+    - name: Checkout Repository
+      uses: actions/checkout@v5
+
+    ##########################################################
+    # Setup Python
+    ##########################################################
+    - name: Setup Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.11"
+        cache: pip
+
+    ##########################################################
+    # Install Dependencies
+    ##########################################################
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov
+
+    ##########################################################
+    # Unit Tests
+    ##########################################################
+    - name: Run Unit Tests
+      continue-on-error: true
+      run: |
+        if [ -d tests ]; then
+          pytest tests --cov=. --cov-report=xml
+        else
+          echo "No tests found."
+        fi
+
+    ##########################################################
+    # SonarQube Scan
+    ##########################################################
+    - name: SonarQube Scan
+      uses: SonarSource/sonarqube-scan-action@v6
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+    ##########################################################
+    # Quality Gate
+    ##########################################################
+    - name: SonarQube Quality Gate
+      uses: SonarSource/sonarqube-quality-gate-action@v1.2.0
+      timeout-minutes: 5
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+    ##########################################################
+    # AWS Login
+    ##########################################################
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v5
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    ##########################################################
+    # Verify AWS
+    ##########################################################
+    - name: Verify AWS
+      run: aws sts get-caller-identity
+
+    ##########################################################
+    # Check Existing Model
+    ##########################################################
+    - name: Check Model in S3
+      id: model
+      run: |
+        if aws s3 ls s3://${{ secrets.MODEL_BUCKET }}/model/model.pkl > /dev/null 2>&1
+        then
+          echo "exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "exists=false" >> $GITHUB_OUTPUT
+        fi
+
+    ##########################################################
+    # Download Existing Model
+    ##########################################################
+    - name: Download Model
+      if: steps.model.outputs.exists == 'true'
+      run: |
+        mkdir -p model
+        aws s3 cp s3://${{ secrets.MODEL_BUCKET }}/model/model.pkl model/model.pkl
+
+    ##########################################################
+    # Train Model
+    ##########################################################
+    - name: Train Model
+      if: steps.model.outputs.exists == 'false'
+      run: |
+        python model/train.py
+
+    ##########################################################
+    # Evaluate Model
+    ##########################################################
+    - name: Evaluate Model
+      id: evaluate
+      if: steps.model.outputs.exists == 'true'
+      continue-on-error: true
+      run: |
+        python model/evaluate.py
+
+    ##########################################################
+    # Retrain if Evaluation Fails
+    ##########################################################
+    - name: Retrain Model
+      if: steps.evaluate.outcome == 'failure'
+      run: |
+        python model/train.py
+
+    ##########################################################
+    # Upload Model
+    ##########################################################
+    - name: Upload Model to S3
+      if: steps.model.outputs.exists == 'false' || steps.evaluate.outcome == 'failure'
+      run: |
+        aws s3 cp model/model.pkl s3://${{ secrets.MODEL_BUCKET }}/model/model.pkl
+
+    ##########################################################
+    # Login Amazon ECR
+    ##########################################################
+    - name: Login to Amazon ECR
+      id: login
+      uses: aws-actions/amazon-ecr-login@v2
+
+    ##########################################################
+    # Build Docker Image
+    ##########################################################
+    - name: Build Docker Image
+      env:
+        REGISTRY: ${{ steps.login.outputs.registry }}
+      run: |
+        docker build \
+        -f docker/Dockerfile \
+        -t $REGISTRY/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }} \
+        -t $REGISTRY/${{ secrets.ECR_REPOSITORY }}:latest \
+        .
+
+    ##########################################################
+    # Push Docker Image
+    ##########################################################
+    - name: Push Docker Image
+      env:
+        REGISTRY: ${{ steps.login.outputs.registry }}
+      run: |
+        docker push $REGISTRY/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
+        docker push $REGISTRY/${{ secrets.ECR_REPOSITORY }}:latest
+
+    ##########################################################
+    # Upload Kubernetes Manifests
+    ##########################################################
+    - name: Upload Deployment Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: deployment-files
+        path: |
+          k8s/

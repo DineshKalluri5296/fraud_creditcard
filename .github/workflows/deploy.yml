@@ -27,15 +27,7 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v5
 
-    ##########################################################
-    # Download Deployment Artifacts (Optional)
-    ##########################################################
-    - name: Download Deployment Files
-      uses: actions/download-artifact@v4
-      with:
-        name: deployment-files
-        path: k8s
-
+   
     ##########################################################
     # Configure AWS
     ##########################################################

@@ -177,12 +177,4 @@ jobs:
         docker push $REGISTRY/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
         docker push $REGISTRY/${{ secrets.ECR_REPOSITORY }}:latest
 
-    ##########################################################
-    # Upload Kubernetes Manifests
-    ##########################################################
-    - name: Upload Deployment Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: deployment-files
-        path: |
-          k8s/
+    

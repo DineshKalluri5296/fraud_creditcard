@@ -44,13 +44,14 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pytest pytest-cov httpx
+    - name: Set PYTHONPATH
+      run: echo "PYTHONPATH=${GITHUB_WORKSPACE}" >> $GITHUB_ENV
 
     ##########################################################
     # Unit Tests
     ##########################################################
-    - name: Run tests
-      run: |
-         pytest --cov=app --cov-report=xml
+    - name: Run Tests
+      run: pytest tests --cov=app --cov-report=xml -v
 
     ##########################################################
     # SonarQube Scan

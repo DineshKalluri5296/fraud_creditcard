@@ -1,10 +1,8 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-
-from prometheus_client import Counter
-from prometheus_client import generate_latest
+from prometheus_client import Counter, Gauge, Histogram, generate_latest
 from fastapi.responses import Response
-
+import time
 from app.predict import predict_fraud
 
 app = FastAPI(

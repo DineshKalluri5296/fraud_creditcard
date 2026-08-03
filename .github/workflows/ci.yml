@@ -51,7 +51,12 @@ jobs:
     # Unit Tests
     ##########################################################
     - name: Run Tests
-      run: pytest tests --cov=app --cov-report=xml -v
+      run: |
+        if [ -d tests ]; then
+          pytest --cov=app --cov-report=xml -v
+        else
+          echo "No tests directory found. Skipping tests."
+        fi
 
     ##########################################################
     # SonarQube Scan

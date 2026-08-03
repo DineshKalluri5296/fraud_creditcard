@@ -1,8 +1,15 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-from prometheus_client import Counter, Gauge, Histogram, generate_latest
-from fastapi.responses import Response
 import time
+
+from fastapi import FastAPI
+from fastapi.responses import Response
+from pydantic import BaseModel
+from prometheus_client import (
+    Counter,
+    Gauge,
+    Histogram,
+    generate_latest,
+)
+
 from app.predict import predict_fraud
 
 app = FastAPI(
@@ -10,6 +17,7 @@ app = FastAPI(
     version="1.0"
 )
 
+# Prometheus Metrics
 REQUEST_COUNT = Counter(
     "prediction_requests_total",
     "Total Prediction Requests"
@@ -35,9 +43,11 @@ PREDICTION_LATENCY = Histogram(
     "Prediction Latency"
 )
 
+# Set your trained model accuracy (optional)
+MODEL_ACCURACY.set(0.9987)
+
 
 class FraudRequest(BaseModel):
-
     distance_from_home: float
     distance_from_last_transaction: float
     ratio_to_median_purchase_price: float
@@ -49,7 +59,6 @@ class FraudRequest(BaseModel):
 
 @app.get("/")
 def home():
-
     return {
         "message": "Fraud Detection API Running"
     }
@@ -57,20 +66,22 @@ def home():
 
 @app.post("/predict")
 def predict(request: FraudRequest):
-
     REQUEST_COUNT.inc()
 
-    values = [
+    start = time.time()
 
+    values = [
         request.distance_from_home,
         request.distance_from_last_transaction,
         request.ratio_to_median_purchase_price,
         request.repeat_retailer,
         request.used_chip,
         request.used_pin_number,
-        request.online_order
-
+        request.online_order,
     ]
+
+    # Model prediction
+    prediction, probability = predict_fraud(values)
 
     if prediction == 1:
         FRAUD_COUNT.inc()
@@ -79,18 +90,14 @@ def predict(request: FraudRequest):
 
     PREDICTION_LATENCY.observe(time.time() - start)
 
-
     return {
-
-        "fraud_prediction": prediction,
-        "fraud_probability": round(probability, 4)
-
+        "fraud_prediction": int(prediction),
+        "fraud_probability": round(float(probability), 4),
     }
 
 
 @app.get("/metrics")
 def metrics():
-
     return Response(
         generate_latest(),
         media_type="text/plain"

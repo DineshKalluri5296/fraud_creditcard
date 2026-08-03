@@ -4,14 +4,17 @@ kind: Service
 metadata:
   name: fraud-service
   namespace: fraud
+  labels:
+    app: fraud-api
 
 spec:
   selector:
     app: fraud-api
 
   ports:
-  - protocol: TCP
-    port: 80
-    targetPort: 8000
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 8000
 
   type: LoadBalancer

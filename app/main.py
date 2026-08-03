@@ -17,6 +17,26 @@ REQUEST_COUNT = Counter(
     "Total Prediction Requests"
 )
 
+FRAUD_COUNT = Counter(
+    "fraud_predictions_total",
+    "Total Fraud Predictions"
+)
+
+NON_FRAUD_COUNT = Counter(
+    "nonfraud_predictions_total",
+    "Total Non-Fraud Predictions"
+)
+
+MODEL_ACCURACY = Gauge(
+    "model_accuracy",
+    "Model Accuracy"
+)
+
+PREDICTION_LATENCY = Histogram(
+    "prediction_latency_seconds",
+    "Prediction Latency"
+)
+
 
 class FraudRequest(BaseModel):
 
@@ -54,7 +74,13 @@ def predict(request: FraudRequest):
 
     ]
 
-    prediction, probability = predict_fraud(values)
+    if prediction == 1:
+        FRAUD_COUNT.inc()
+    else:
+        NON_FRAUD_COUNT.inc()
+
+    PREDICTION_LATENCY.observe(time.time() - start)
+
 
     return {
 

@@ -111,8 +111,10 @@ jobs:
     - name: Download Model
       if: steps.model.outputs.exists == 'true'
       run: |
-        mkdir -p model
-        aws s3 cp s3://${{ secrets.MODEL_BUCKET }}/model/model.pkl model/model.pkl
+         mkdir -p model
+         aws s3 cp s3://${{ secrets.MODEL_BUCKET }}/model/model.pkl model/model.pkl
+         aws s3 cp s3://${{ secrets.MODEL_BUCKET }}/model/training_stats.json model/training_stats.json
+         aws s3 cp s3://${{ secrets.MODEL_BUCKET }}/model/model_metrics.json model/model_metrics.json
 
     ##########################################################
     # Train Model
@@ -143,10 +145,12 @@ jobs:
     ##########################################################
     # Upload Model
     ##########################################################
-    - name: Upload Model to S3
+    - name: Upload Model Files to S3
       if: steps.model.outputs.exists == 'false' || steps.evaluate.outcome == 'failure'
       run: |
-        aws s3 cp model/model.pkl s3://${{ secrets.MODEL_BUCKET }}/model/model.pkl
+       aws s3 cp model/model.pkl s3://${{ secrets.MODEL_BUCKET }}/model/model.pkl
+       aws s3 cp model/training_stats.json s3://${{ secrets.MODEL_BUCKET }}/model/training_stats.json
+       aws s3 cp model/model_metrics.json s3://${{ secrets.MODEL_BUCKET }}/model/model_metrics.json
 
 
     ##########################################################

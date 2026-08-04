@@ -51,10 +51,12 @@ PREDICTION_LATENCY = Histogram(
 
 # Set your trained model accuracy (optional)
 try:
-    with open("model/model_metrics.json") as f:
+    with open("model/model_metrics.json", "r") as f:
         metrics = json.load(f)
+
     MODEL_ACCURACY.set(metrics["accuracy"])
-except:
+
+except (FileNotFoundError, json.JSONDecodeError, KeyError):
     MODEL_ACCURACY.set(0)
 
 

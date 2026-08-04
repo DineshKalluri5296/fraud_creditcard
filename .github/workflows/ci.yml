@@ -58,6 +58,18 @@ jobs:
           echo "No tests directory found. Skipping tests."
         fi
 
+    - name: Verify Coverage File
+      run: |
+          pwd
+          ls -la
+          if [ -f coverage.xml ]; then
+             echo "coverage.xml found"
+             head -20 coverage.xml
+          else
+             echo "coverage.xml NOT FOUND"
+             exit 1
+          fi
+
     ##########################################################
     # SonarQube Scan
     ##########################################################

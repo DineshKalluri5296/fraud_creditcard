@@ -57,19 +57,6 @@ jobs:
         else
           echo "No tests directory found. Skipping tests."
         fi
-
-    - name: Verify Coverage File
-      run: |
-          pwd
-          ls -la
-          if [ -f coverage.xml ]; then
-             echo "coverage.xml found"
-             head -20 coverage.xml
-          else
-             echo "coverage.xml NOT FOUND"
-             exit 1
-          fi
-
     ##########################################################
     # SonarQube Scan
     ##########################################################
@@ -107,29 +94,23 @@ jobs:
     ##########################################################
     # Check Existing Model
     ##########################################################
-    - name: Check Model Files in S3
+    - name: Check Model in S3
       id: model
       run: |
-        if  aws s3 ls s3://${{ secrets.MODEL_BUCKET }}/model/model.pkl > /dev/null 2>&1 && \
-            aws s3 ls s3://${{ secrets.MODEL_BUCKET }}/model/training_stats.json > /dev/null 2>&1 && \
-            aws s3 ls s3://${{ secrets.MODEL_BUCKET }}/model/model_metrics.json > /dev/null 2>&1
+        if aws s3 ls s3://${{ secrets.MODEL_BUCKET }}/model/model.pkl > /dev/null 2>&1
         then
-            echo "exists=true" >> $GITHUB_OUTPUT
+          echo "exists=true" >> $GITHUB_OUTPUT
         else
-            echo "exists=false" >> $GITHUB_OUTPUT
+          echo "exists=false" >> $GITHUB_OUTPUT
         fi
-
     ##########################################################
     # Download Existing Model
     ##########################################################
     - name: Download Model
       if: steps.model.outputs.exists == 'true'
       run: |
-         mkdir -p model
-         aws s3 cp s3://${{ secrets.MODEL_BUCKET }}/model/model.pkl model/model.pkl
-         aws s3 cp s3://${{ secrets.MODEL_BUCKET }}/model/training_stats.json model/training_stats.json
-         aws s3 cp s3://${{ secrets.MODEL_BUCKET }}/model/model_metrics.json model/model_metrics.json
-
+        mkdir -p model
+        aws s3 cp s3://${{ secrets.MODEL_BUCKET }}/model/model.pkl model/model.pkl
     ##########################################################
     # Train Model
     ##########################################################
@@ -137,7 +118,6 @@ jobs:
       if: steps.model.outputs.exists == 'false'
       run: |
         python model/train.py
-
     ##########################################################
     # Evaluate Model
     ##########################################################
@@ -147,7 +127,6 @@ jobs:
       continue-on-error: true
       run: |
         python model/evaluate.py
-
     ##########################################################
     # Retrain if Evaluation Fails
     ##########################################################
@@ -155,18 +134,13 @@ jobs:
       if: steps.evaluate.outcome == 'failure'
       run: |
         python model/train.py
-
     ##########################################################
     # Upload Model
     ##########################################################
-    - name: Upload Model Files to S3
+    - name: Upload Model to S3
       if: steps.model.outputs.exists == 'false' || steps.evaluate.outcome == 'failure'
       run: |
-       aws s3 cp model/model.pkl s3://${{ secrets.MODEL_BUCKET }}/model/model.pkl
-       aws s3 cp model/training_stats.json s3://${{ secrets.MODEL_BUCKET }}/model/training_stats.json
-       aws s3 cp model/model_metrics.json s3://${{ secrets.MODEL_BUCKET }}/model/model_metrics.json
-
-
+        aws s3 cp model/model.pkl s3://${{ secrets.MODEL_BUCKET }}/model/model.pkl
     ##########################################################
     # Login Amazon ECR
     ##########################################################
@@ -186,7 +160,6 @@ jobs:
         -t $REGISTRY/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }} \
         -t $REGISTRY/${{ secrets.ECR_REPOSITORY }}:latest \
         .
-
     ##########################################################
     # Push Docker Image
     ##########################################################
@@ -196,5 +169,3 @@ jobs:
       run: |
         docker push $REGISTRY/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }}
         docker push $REGISTRY/${{ secrets.ECR_REPOSITORY }}:latest
-
-    

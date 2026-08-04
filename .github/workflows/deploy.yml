@@ -53,7 +53,6 @@ jobs:
         aws eks update-kubeconfig \
         --region ${{ secrets.AWS_REGION }} \
         --name ${{ secrets.EKS_CLUSTER }}
-
     ##########################################################
     # Verify Cluster
     ##########################################################
@@ -61,7 +60,6 @@ jobs:
       run: |
         kubectl cluster-info
         kubectl get nodes
-
     ##########################################################
     # Create Namespace
     ##########################################################
@@ -69,7 +67,6 @@ jobs:
       run: |
         kubectl create namespace fraud \
         --dry-run=client -o yaml | kubectl apply -f -
-
     ##########################################################
     # Deploy ConfigMap
     ##########################################################
@@ -91,7 +88,6 @@ jobs:
       run: |
         sed -i "s|IMAGE_PLACEHOLDER|$REGISTRY/${{ secrets.ECR_REPOSITORY }}:${{ github.event.inputs.image_tag }}|g" \
         k8s/deployment.yml
-
     ##########################################################
     # Deploy Application
     ##########################################################
@@ -113,7 +109,6 @@ jobs:
         kubectl rollout status deployment/fraud-api \
         -n fraud \
         --timeout=300s
-
     ##########################################################
     # Verify Deployment
     ##########################################################

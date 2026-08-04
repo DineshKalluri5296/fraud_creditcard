@@ -1,5 +1,6 @@
 import time
-
+import json
+from app.drift import calculate_drift
 from fastapi import FastAPI
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -38,13 +39,28 @@ MODEL_ACCURACY = Gauge(
     "Model Accuracy"
 )
 
+DATA_DRIFT_SCORE = Gauge(
+    "data_drift_score",
+    "Current Data Drift Score"
+)
+
 PREDICTION_LATENCY = Histogram(
     "prediction_latency_seconds",
     "Prediction Latency"
 )
 
 # Set your trained model accuracy (optional)
-MODEL_ACCURACY.set(0.9987)
+try:
+
+    with open("model/model_metrics.json") as f:
+
+        metrics = json.load(f)
+
+        MODEL_ACCURACY.set(metrics["accuracy"])
+
+except:
+
+    MODEL_ACCURACY.set(0)
 
 
 class FraudRequest(BaseModel):
@@ -82,6 +98,8 @@ def predict(request: FraudRequest):
 
     # Model prediction
     prediction, probability = predict_fraud(values)
+    drift = calculate_drift(values)
+    DATA_DRIFT_SCORE.set(drift)
 
     if prediction == 1:
         FRAUD_COUNT.inc()
